@@ -27,11 +27,13 @@ internal static class SmokeProgram
                 var core = view.CoreWebView2;
                 var search = await Navigate(core, Routes.Home + "search/%E7%8C%AB", token);
                 Require(search.Contains("search/", StringComparison.Ordinal), "Search did not reach official results.");
+                var tag = await Navigate(core, Routes.ResolveTag("初音ミク")!, token);
+                Require(Routes.Canonical(tag)?.Kind == "タグ検索", "Tag search did not reach official results.");
                 var logIn = await Navigate(core, Routes.Login, token);
                 Require(new Uri(logIn).Host == "account.nicovideo.jp", "Login hostname did not match.");
                 var watch = await Navigate(core, Routes.Home + "watch/sm9", token);
                 Require(watch.Contains("/watch/", StringComparison.Ordinal), "Watch page did not load.");
-                Console.WriteLine("PASS: WebView2 started; official search, login, and watch pages loaded.");
+                Console.WriteLine("PASS: WebView2 started; official keyword search, tag search, login, and watch pages loaded.");
                 result = 0;
             }
             catch (Exception e) { Console.Error.WriteLine(e.Message); }

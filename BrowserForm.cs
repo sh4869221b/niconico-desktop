@@ -84,11 +84,11 @@ internal sealed class BrowserForm : Form
         var bar = new TableLayoutPanel
         {
             Dock = DockStyle.Fill, Margin = Padding.Empty, Padding = new Padding(8, 9, 10, 8),
-            BackColor = PanelColor, ColumnCount = 9, RowCount = 1
+            BackColor = PanelColor, ColumnCount = 10, RowCount = 1
         };
         foreach (int n in new[] { 48, 48, 68, 80 }) bar.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, n));
         bar.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        foreach (int n in new[] { 76, 98, 100, 102 }) bar.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, n));
+        foreach (int n in new[] { 76, 80, 98, 100, 102 }) bar.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, n));
         _back.AccessibleName = "戻る";
         _forward.AccessibleName = "進む";
         _back.Click += (_, _) => { if (_core?.CanGoBack == true) _core.GoBack(); };
@@ -102,8 +102,8 @@ internal sealed class BrowserForm : Form
         _address.BorderStyle = BorderStyle.FixedSingle;
         _address.BackColor = Background;
         _address.ForeColor = TextColor;
-        _address.AccessibleName = "動画を検索、またはニコニコのURLを入力";
-        _address.PlaceholderText = "キーワード・動画ID・ニコニコのURL";
+        _address.AccessibleName = "キーワード、タグ、動画ID、またはニコニコのURLを入力";
+        _address.PlaceholderText = "キーワード・タグ・URL";
         _address.KeyDown += (_, e) =>
         {
             if (e.KeyCode != Keys.Enter) return;
@@ -112,12 +112,14 @@ internal sealed class BrowserForm : Form
         };
         var go = MakeButton("検索", 70, true);
         go.Click += (_, _) => SubmitAddress();
+        var tag = MakeButton("タグ検索", 74);
+        tag.Click += (_, _) => SubmitAddress(asTag: true);
         _pin.Click += (_, _) => PinCurrent();
         var my = MakeButton("マイリスト", 94);
         my.Click += (_, _) => Navigate(Routes.MyLists);
         var login = MakeButton("ログイン", 96);
         login.Click += (_, _) => Navigate(Routes.Login);
-        foreach (Control c in new Control[] { _back, _forward, _reload, home, _address, go, _pin, my, login })
+        foreach (Control c in new Control[] { _back, _forward, _reload, home, _address, go, tag, _pin, my, login })
             bar.Controls.Add(c);
         return bar;
     }
@@ -256,14 +258,15 @@ internal sealed class BrowserForm : Form
         _core.Navigate(url);
     }
 
-    private void SubmitAddress()
+    private void SubmitAddress(bool asTag = false)
     {
-        if (Routes.Resolve(_address.Text) is { } target)
+        if ((asTag ? Routes.ResolveTag(_address.Text) : Routes.Resolve(_address.Text)) is { } target)
         {
             Navigate(target);
             _view.Focus();
         }
-        else SetStatus("キーワード、動画ID、またはニコニコ公式のHTTPS URLを入力してください。");
+        else SetStatus(asTag ? "検索するタグ名を入力してください。" :
+            "キーワード、動画ID、またはニコニコ公式のHTTPS URLを入力してください。");
     }
 
     private void UpdateControls()
@@ -289,7 +292,7 @@ internal sealed class BrowserForm : Form
     private void PinCurrent()
     {
         if (_core is null || LibraryStore.Create(_core.Source, _core.DocumentTitle) is not { } x)
-        { SetStatus("動画・マイリスト・ユーザーページを開いてから登録してください。"); return; }
+        { SetStatus("検索結果、動画、マイリスト、またはユーザーページを開いてから登録してください。"); return; }
         if (!_library.Pin(x)) { SetStatus("登録済み、または登録件数が上限に達しています。"); return; }
         var saved = Persist();
         _showHistory = false;

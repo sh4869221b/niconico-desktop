@@ -29,14 +29,57 @@ internal static partial class Routes
             return Resolve("https://" + v);
         if (VideoId().IsMatch(v)) return Home + "watch/" + v.ToLowerInvariant();
         if (ShortPath().IsMatch(v)) return Home + v.TrimStart('/');
-        return Home + "search/" + Uri.EscapeDataString(v);
+        return SearchUrl("search", v);
     }
+
+    internal static string? ResolveTag(string? value)
+    {
+        var tag = value?.Trim();
+        if (string.IsNullOrEmpty(tag) || tag.Length > 500 ||
+            tag.StartsWith("//", StringComparison.Ordinal) || tag.Contains("://", StringComparison.Ordinal))
+            return null;
+        return SearchUrl("tag", tag);
+    }
+
+    private static string? SearchUrl(string mode, string term) =>
+        term.Length is > 0 and <= 500 && term is not ("." or "..") && !term.Any(char.IsControl)
+            ? Home + mode + "/" + Uri.EscapeDataString(term)
+            : null;
+
+    private static (string Url, string Kind)? CanonicalSearch(Uri u, string path)
+    {
+        var parts = path.Split('/');
+        if (parts is not [("search" or "tag"), var encoded]) return null;
+        var term = Uri.UnescapeDataString(encoded);
+        if (SearchUrl(parts[0], term) is not { } url) return null;
+
+        // Preserve sorting, but drop pagination, tracking and unknown query parameters.
+        var options = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var parameter in u.Query.TrimStart('?').Split('&'))
+        {
+            var pair = parameter.Split('=', 2);
+            if (pair is not [var key, var value]) continue;
+            if ((key == "sort" && SortKey().IsMatch(value)) ||
+                (key == "order" && value is "a" or "d"))
+                options.TryAdd(key, value);
+        }
+
+        var query = string.Join("&", options.OrderBy(x => x.Key, StringComparer.Ordinal)
+            .Select(x => x.Key + "=" + x.Value));
+        return (query.Length == 0 ? url : url + "?" + query,
+            parts[0] == "tag" ? "タグ検索" : "キーワード検索");
+    }
+
+    [GeneratedRegex(@"\A[a-z]{1,4}\z", RegexOptions.CultureInvariant)]
+    private static partial Regex SortKey();
 
     internal static (string Url, string Kind)? Canonical(string? value)
     {
         if (!Uri.TryCreate(value, UriKind.Absolute, out var u) || !IsAllowed(u)) return null;
         if (u.IdnHost is "account.nicovideo.jp" or "ch.nicovideo.jp") return null;
         var p = u.AbsolutePath.Trim('/');
+        if (u.IdnHost is "www.nicovideo.jp" or "nicovideo.jp" or "sp.nicovideo.jp" or "video.nicovideo.jp" &&
+            CanonicalSearch(u, p) is { } search) return search;
         if (u.IdnHost == "nico.ms" && VideoId().IsMatch(p)) p = "watch/" + p;
         if (p.Equals("my/mylist", StringComparison.Ordinal)) return (MyLists, "マイリスト");
         if (!ShortPath().IsMatch(p)) return null;
