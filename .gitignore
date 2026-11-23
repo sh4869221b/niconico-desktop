@@ -1,0 +1,7 @@
+bin/
+obj/
+.build-sdk/
+.build-sdk.zip
+.publish/
+*.user
+.vs/
