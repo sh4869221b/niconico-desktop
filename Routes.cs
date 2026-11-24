@@ -73,6 +73,31 @@ internal static partial class Routes
     [GeneratedRegex(@"\A[a-z]{1,4}\z", RegexOptions.CultureInvariant)]
     private static partial Regex SortKey();
 
+    internal static string? GoNicoListUrl(string? value)
+    {
+        if (!Uri.TryCreate(value, UriKind.Absolute, out var u) || !IsAllowed(u) ||
+            u.IdnHost is not ("www.nicovideo.jp" or "nicovideo.jp" or "sp.nicovideo.jp" or "video.nicovideo.jp"))
+            return null;
+
+        // Export only stable identifiers, not sorting, pagination, tracking or account data.
+        var path = u.AbsolutePath.TrimEnd('/').Split('/');
+        return path switch
+        {
+            ["", "user", var id] when IsNumericId(id, 9) => Home + "user/" + id,
+            ["", "user", var id, "video"] when IsNumericId(id, 9) => Home + "user/" + id,
+            ["", "mylist", var id] when IsNumericId(id, 12) => Home + "mylist/" + id,
+            ["", "user", var owner, "mylist", var id] when IsNumericId(owner, 9) && IsNumericId(id, 12) =>
+                Home + "mylist/" + id,
+            ["", "my", "mylist"] when u.Fragment.StartsWith("#/", StringComparison.Ordinal) &&
+                IsNumericId(u.Fragment[2..], 12) => Home + "mylist/" + u.Fragment[2..],
+            _ => null
+        };
+    }
+
+    // Match the CLI's ID length limits rather than exporting an ID it would truncate.
+    private static bool IsNumericId(string id, int maxLength) =>
+        id.Length > 0 && id.Length <= maxLength && id.All(char.IsAsciiDigit);
+
     internal static (string Url, string Kind)? Canonical(string? value)
     {
         if (!Uri.TryCreate(value, UriKind.Absolute, out var u) || !IsAllowed(u)) return null;
