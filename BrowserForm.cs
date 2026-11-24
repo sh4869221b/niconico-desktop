@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using Microsoft.Web.WebView2.Core;
 using Microsoft.Web.WebView2.WinForms;
 
@@ -20,6 +21,7 @@ internal sealed class BrowserForm : Form
     private readonly Button _forward = MakeButton("›", 44);
     private readonly Button _reload = MakeButton("更新", 64);
     private readonly Button _pin = MakeButton("☆ 登録", 92);
+    private readonly Button _copyUrl = MakeButton("URLをコピー", 96);
     private readonly Button _pins = MakeButton("登録済み", 95);
     private readonly Button _history = MakeButton("視聴履歴", 95);
     private readonly Button _remove = MakeButton("選択項目を削除", 205);
@@ -27,6 +29,7 @@ internal sealed class BrowserForm : Form
     private CoreWebView2? _core;
     private bool _showHistory;
     private string? _lastSuccessful;
+    private ulong? _pendingNavigation;
     private string? _queued;
     private bool _allowHistory = true;
 
@@ -41,7 +44,7 @@ internal sealed class BrowserForm : Form
         Font = new Font("Yu Gothic UI", 10F);
         Width = 1260;
         Height = 850;
-        MinimumSize = new Size(890, 610);
+        MinimumSize = new Size(980, 610);
         StartPosition = FormStartPosition.CenterScreen;
         BackColor = Background;
         ForeColor = TextColor;
@@ -84,11 +87,11 @@ internal sealed class BrowserForm : Form
         var bar = new TableLayoutPanel
         {
             Dock = DockStyle.Fill, Margin = Padding.Empty, Padding = new Padding(8, 9, 10, 8),
-            BackColor = PanelColor, ColumnCount = 10, RowCount = 1
+            BackColor = PanelColor, ColumnCount = 11, RowCount = 1
         };
         foreach (int n in new[] { 48, 48, 68, 80 }) bar.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, n));
         bar.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        foreach (int n in new[] { 76, 80, 98, 100, 102 }) bar.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, n));
+        foreach (int n in new[] { 76, 80, 98, 102, 100, 102 }) bar.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, n));
         _back.AccessibleName = "戻る";
         _forward.AccessibleName = "進む";
         _back.Click += (_, _) => { if (_core?.CanGoBack == true) _core.GoBack(); };
@@ -115,11 +118,13 @@ internal sealed class BrowserForm : Form
         var tag = MakeButton("タグ検索", 74);
         tag.Click += (_, _) => SubmitAddress(asTag: true);
         _pin.Click += (_, _) => PinCurrent();
+        _copyUrl.AccessibleName = "go-nico-list 用のURLをコピー";
+        _copyUrl.Click += (_, _) => CopyCurrentUrl();
         var my = MakeButton("マイリスト", 94);
         my.Click += (_, _) => Navigate(Routes.MyLists);
         var login = MakeButton("ログイン", 96);
         login.Click += (_, _) => Navigate(Routes.Login);
-        foreach (Control c in new Control[] { _back, _forward, _reload, home, _address, go, tag, _pin, my, login })
+        foreach (Control c in new Control[] { _back, _forward, _reload, home, _address, go, tag, _pin, _copyUrl, my, login })
             bar.Controls.Add(c);
         return bar;
     }
@@ -202,8 +207,10 @@ internal sealed class BrowserForm : Form
             {
                 if (Routes.IsAllowed(e.Uri))
                 {
+                    _pendingNavigation = e.NavigationId;
                     _lastSuccessful = null;
                     _allowHistory = true;
+                    UpdateCopyControl();
                     SetStatus("読み込み中…");
                     return;
                 }
@@ -227,6 +234,9 @@ internal sealed class BrowserForm : Form
             _core.DocumentTitleChanged += (_, _) => { if (_lastSuccessful == _core.Source) RecordVideo(); };
             _core.NavigationCompleted += (_, e) =>
             {
+                if (_pendingNavigation != e.NavigationId) return;
+                _pendingNavigation = null;
+                _lastSuccessful = e.IsSuccess ? _core.Source : null;
                 UpdateControls();
                 if (!e.IsSuccess)
                 {
@@ -234,7 +244,6 @@ internal sealed class BrowserForm : Form
                         SetStatus("ページを読み込めませんでした: " + e.WebErrorStatus);
                     return;
                 }
-                _lastSuccessful = _core.Source;
                 SetStatus(new Uri(_core.Source).IdnHost == "account.nicovideo.jp"
                     ? "ニコニコ公式のアカウント画面" : "ニコニコ公式ページ");
                 RecordVideo();
@@ -275,8 +284,28 @@ internal sealed class BrowserForm : Form
         _forward.Enabled = _core?.CanGoForward == true;
         _reload.Enabled = _core is not null;
         _pin.Enabled = Routes.Canonical(_core?.Source) is not null;
+        UpdateCopyControl();
         if (!_address.Focused && Uri.TryCreate(_core?.Source, UriKind.Absolute, out var source) && Routes.IsAllowed(source))
             _address.Text = source.IdnHost == "account.nicovideo.jp" ? source.GetLeftPart(UriPartial.Path) : source.AbsoluteUri;
+    }
+
+    private string? CurrentGoNicoListUrl() =>
+        _lastSuccessful is null ? null : Routes.GoNicoListUrl(_core?.Source);
+
+    private void UpdateCopyControl() => _copyUrl.Enabled = CurrentGoNicoListUrl() is not null;
+
+    private void CopyCurrentUrl()
+    {
+        if (CurrentGoNicoListUrl() is not { } url) return;
+        try
+        {
+            Clipboard.SetText(url);
+            SetStatus("go-nico-list 用のURLをコピーしました。");
+        }
+        catch (ExternalException)
+        {
+            SetStatus("クリップボードにコピーできませんでした。もう一度お試しください。");
+        }
     }
 
     private void RecordVideo()

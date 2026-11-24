@@ -32,6 +32,30 @@ Check(Routes.Canonical("https://www.nicovideo.jp/my/mylist")?.Kind == "マイリ
 Check(Routes.Canonical("https://www.nicovideo.jp/user/123/mylist/456")?.Kind == "マイリスト", "user playlist pin");
 Check(Routes.Canonical(Routes.Login + "?token=test") is null, "auth not saved");
 
+foreach (var (source, target) in new[]
+{
+    (Routes.Home + "user/12345", "user/12345"),
+    (Routes.Home + "user/12345/video/?page=2&ref=tracking#top", "user/12345"),
+    (Routes.Home + "mylist/847130?ref=tracking#top", "mylist/847130"),
+    ("https://sp.nicovideo.jp/user/12345/mylist/847130?ref=tracking", "mylist/847130"),
+    (Routes.MyLists + "/?ref=tracking#/847130", "mylist/847130"),
+    (Routes.Home + "user/123456789/mylist/123456789012", "mylist/123456789012")
+})
+    Check(Routes.GoNicoListUrl(source) == Routes.Home + target, "CLI copy: " + source);
+
+foreach (var source in new[]
+{
+    null, Routes.Home, keywordUrl, tagUrl, Routes.Login + "?token=test",
+    Routes.Home + "watch/sm9", Routes.Home + "user/12345/mylist", Routes.Home + "user/12345/series/89",
+    Routes.MyLists, Routes.MyLists + "/#/later", Routes.MyLists + "/#/847130/other",
+    Routes.Home + "user/1234567890/video", Routes.Home + "mylist/1234567890123",
+    Routes.Home + "mylist/１２３", Routes.Home + "mylist/123abc",
+    Routes.Home + "user/text/mylist/847130", "https://www.nicovideo.jp:8443/user/12345",
+    "https://www.nicovideo.jp@evil.test/user/12345", "https://account.nicovideo.jp/user/12345",
+    "https://www.nicovideo.jp.evil.test/user/12345", "http://www.nicovideo.jp/user/12345"
+})
+    Check(Routes.GoNicoListUrl(source) is null, "CLI copy disabled: " + source);
+
 var dir = Directory.CreateTempSubdirectory("niconico-test-");
 try
 {
